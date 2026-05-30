@@ -41,6 +41,23 @@ pub const FramebufferRenderer = struct {
         }
     }
 
+    pub fn renderCursor(self: *FramebufferRenderer, terminal: *core.TerminalCore, visible: bool) void {
+        if (!visible) return;
+
+        const cursor = terminal.cursor();
+        if (cursor.x >= terminal.cols or cursor.y >= terminal.rows) return;
+
+        const origin_x = cursor.x * bitmap.glyph_width;
+        const origin_y = cursor.y * bitmap.glyph_height;
+        var gy: usize = 0;
+        while (gy < bitmap.glyph_height) : (gy += 1) {
+            var gx: usize = 0;
+            while (gx < bitmap.glyph_width) : (gx += 1) {
+                self.writePixel(origin_x + gx, origin_y + gy, 0xFFFFFF);
+            }
+        }
+    }
+
     fn drawCell(self: *FramebufferRenderer, col: usize, row: usize, cell: core.Cell) void {
         const glyph = bitmap.BitmapFont.lookup(cell.codepoint);
         const fg = cell.fg;
@@ -66,7 +83,6 @@ pub const FramebufferRenderer = struct {
         if (x >= width or y >= height) return;
         self.fb_ptr[y * self.stride_pixels + x] = color;
     }
-
 };
 
 fn framebufferDimension(value: u64) usize {

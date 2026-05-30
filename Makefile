@@ -1,16 +1,12 @@
-# Nuke built-in rules and variables.
 MAKEFLAGS += -rR
 .SUFFIXES:
 
-# Target architecture to build for. Default to x86_64.
 ARCH := x86_64
 
-# Default user QEMU flags. These are appended to the QEMU command calls.
 QEMUFLAGS := -m 2G
 
 override IMAGE_NAME := template-$(ARCH)
 
-# Toolchain for building the 'limine' executable for the host.
 HOST_CC := cc
 HOST_CFLAGS := -g -O2 -pipe
 HOST_CPPFLAGS :=

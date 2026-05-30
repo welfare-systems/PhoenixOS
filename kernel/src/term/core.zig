@@ -10,6 +10,11 @@ pub const Cell = struct {
     dirty: bool,
 };
 
+pub const Cursor = struct {
+    x: usize,
+    y: usize,
+};
+
 pub const TerminalCore = struct {
     cols: usize,
     rows: usize,
@@ -75,6 +80,39 @@ pub const TerminalCore = struct {
                 self.cellPtr(col, row).dirty = true;
             }
         }
+    }
+
+    pub fn cursor(self: *TerminalCore) Cursor {
+        return .{ .x = self.cursor_x, .y = self.cursor_y };
+    }
+
+    pub fn setCursor(self: *TerminalCore, x: usize, y: usize) void {
+        if (x >= self.cols or y >= self.rows) {
+            @panic("Cursor out of bounds");
+        }
+        self.cursor_x = x;
+        self.cursor_y = y;
+    }
+
+    pub fn clearRow(self: *TerminalCore, row: usize) void {
+        if (row >= self.rows) {
+            @panic("Row out of bounds");
+        }
+
+        var col: usize = 0;
+        while (col < self.cols) : (col += 1) {
+            const cell = self.cellPtr(col, row);
+            cell.* = .{
+                .codepoint = ' ',
+                .fg = self.current_fg,
+                .bg = self.current_bg,
+                .dirty = true,
+            };
+        }
+    }
+
+    pub fn markDirtyAt(self: *TerminalCore, x: usize, y: usize) void {
+        self.cellPtr(x, y).dirty = true;
     }
 
     fn putPrintable(self: *TerminalCore, codepoint: u32) void {
