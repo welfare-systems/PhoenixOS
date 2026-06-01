@@ -31,6 +31,12 @@ load_idt:
     lidt [rdi]
     ret
 
+.global read_cr2
+.type read_cr2, @function
+read_cr2:
+    mov rax, cr2
+    ret
+
 .macro ISR_NOERR name, vector
 .global \name
 .type \name, @function

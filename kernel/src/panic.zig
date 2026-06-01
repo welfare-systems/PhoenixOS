@@ -5,6 +5,8 @@ const display = @import("display.zig");
 const terminal = @import("term/terminal.zig");
 const trap = @import("arch/x86_64/trap.zig");
 
+extern fn read_cr2() callconv(.C) u64;
+
 fn haltForever() noreturn {
     while (true) {
         asm volatile ("hlt");
@@ -47,17 +49,28 @@ pub fn panic(msg: []const u8) noreturn {
 pub fn panicException(frame: *const trap.InterruptFrame) noreturn {
     var line0: [128]u8 = undefined;
     var line1: [128]u8 = undefined;
+    var line2: [128]u8 = undefined;
+    var line3: [128]u8 = undefined;
 
     const title = std.fmt.bufPrint(line0[0..], "KERNEL EXCEPTION: {s} (vector={})", .{ trap.exceptionName(frame.vector), frame.vector }) catch unreachable;
     const error_line = std.fmt.bufPrint(line1[0..], "error_code=0x{x} rip=0x{x} cs=0x{x} rflags=0x{x}", .{ frame.error_code, frame.rip, frame.cs, frame.rflags }) catch unreachable;
-    var line2: [128]u8 = undefined;
-    const footer = std.fmt.bufPrint(line2[0..], "system halted", .{}) catch unreachable;
+    const footer = std.fmt.bufPrint(line3[0..], "system halted", .{}) catch unreachable;
 
     emitLine(title);
+    if (frame.vector == 14) {
+        const fault_address = std.fmt.bufPrint(line2[0..], "address=0x{x}", .{read_cr2()}) catch unreachable;
+        emitLine(fault_address);
+    }
     emitLine(error_line);
     emitLine(footer);
 
-    const lines = [_][]const u8{ title, error_line, footer };
-    renderPanicScreen("KERNEL EXCEPTION", lines[0..]);
+    if (frame.vector == 14) {
+        const fault_address = std.fmt.bufPrint(line2[0..], "address=0x{x}", .{read_cr2()}) catch unreachable;
+        const lines = [_][]const u8{ title, fault_address, error_line, footer };
+        renderPanicScreen("KERNEL EXCEPTION", lines[0..]);
+    } else {
+        const lines = [_][]const u8{ title, error_line, footer };
+        renderPanicScreen("KERNEL EXCEPTION", lines[0..]);
+    }
     haltForever();
 }
