@@ -7,6 +7,16 @@ const renderer_mod = @import("term/renderer.zig");
 const terminal_mod = @import("term/terminal.zig");
 const keyboard = @import("drivers/input/keyboard.zig");
 const shell_mod = @import("shell.zig");
+const klog = @import("log/klog.zig");
+const panic_mod = @import("panic.zig");
+const display = @import("display.zig");
+const gdt = @import("arch/x86_64/gdt.zig");
+const interrupts = @import("arch/x86_64/interrupts.zig");
+const handlers = @import("arch/x86_64/handlers.zig");
+
+pub export fn exception_common(frame: *const @import("arch/x86_64/trap.zig").InterruptFrame) noreturn {
+    return handlers.exception_common(frame);
+}
 
 export var start_marker: limine.RequestsStartMarker linksection(".limine_requests_start") = .{};
 export var end_marker: limine.RequestsEndMarker linksection(".limine_requests_end") = .{};
@@ -166,24 +176,50 @@ fn bootSplash(renderer: *renderer_mod.FramebufferRenderer) void {
 
 export fn _start() noreturn {
     if (!base_revision.isSupported()) {
-        @panic("Base revision not supported");
+        if (builtin.cpu.arch == .x86_64) klog.klog.err("Base revision not supported");
+        panic_mod.panic("Base revision not supported");
     }
 
     bitmap.init();
 
+    if (builtin.cpu.arch == .x86_64) {
+        klog.klog.init();
+        klog.klog.info("klog: initialized\n");
+    }
+
+    if (builtin.cpu.arch == .x86_64) {
+        gdt.init();
+        if (klog.klog.initialized) klog.klog.info("gdt: loaded\n");
+    }
+
+    if (framebuffer_request.response) |framebuffer_response| {
+        const framebuffers = framebuffer_response.getFramebuffers();
+        if (builtin.cpu.arch == .x86_64) {
+            klog.klog.info("framebuffer: response present\n");
+            if (framebuffers.len == 0) {
+                klog.klog.warn("framebuffer: response has zero framebuffers\n");
+            } else {
+                klog.klog.info("framebuffer: at least one framebuffer available\n");
+            }
+        }
+    } else if (builtin.cpu.arch == .x86_64) {
+        klog.klog.warn("framebuffer: response missing\n");
+    }
+
     if (framebuffer_request.response) |framebuffer_response| {
         const framebuffers = framebuffer_response.getFramebuffers();
         if (framebuffers.len == 0) {
-            @panic("No framebuffers available");
+            panic_mod.panic("No framebuffers available");
         }
 
         const framebuffer = framebuffers[0];
         var renderer = renderer_mod.FramebufferRenderer.init(framebuffer);
+        display.setRenderer(renderer);
 
         const width: usize = @intCast(framebuffer.width);
         const height: usize = @intCast(framebuffer.height);
         if (width < bitmap.glyph_width or height < bitmap.glyph_height) {
-            @panic("Framebuffer too small for terminal");
+            panic_mod.panic("Framebuffer too small for terminal");
         }
 
         const cols = @min(width / bitmap.glyph_width, core.MAX_COLS);
@@ -191,6 +227,7 @@ export fn _start() noreturn {
 
         renderer.clear(0x000000);
         terminal_mod.init(cols, rows, 0x00FF00, 0x000000);
+        interrupts.init();
 
         bootSplash(&renderer);
 
@@ -251,6 +288,6 @@ export fn _start() noreturn {
             }
         }
     } else {
-        @panic("Framebuffer response not present");
+        panic_mod.panic("Framebuffer response not present");
     }
 }

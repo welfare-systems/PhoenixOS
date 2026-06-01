@@ -3,7 +3,8 @@ MAKEFLAGS += -rR
 
 ARCH := x86_64
 
-QEMUFLAGS := -m 2G
+QEMUFLAGS := -m 4G
+QEMU_SERIALFLAGS := -serial stdio
 
 override IMAGE_NAME := template-$(ARCH)
 
@@ -13,8 +14,34 @@ HOST_CPPFLAGS :=
 HOST_LDFLAGS :=
 HOST_LIBS :=
 
+ifeq ($(OS),Windows_NT)
+define MKDIR_P
+powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(1)' | Out-Null"
+endef
+define RM_RF
+powershell -NoProfile -Command "if (Test-Path '$(1)') { Remove-Item -Recurse -Force '$(1)' }"
+endef
+define RM_F
+powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue '$(1)'"
+endef
+else
+define MKDIR_P
+mkdir -p $(1)
+endef
+define RM_RF
+rm -rf $(1)
+endef
+define RM_F
+rm -f $(1)
+endef
+endif
+
 .PHONY: all
 all: $(IMAGE_NAME).iso
+
+.PHONY: test
+test:
+	$(MAKE) -C kernel test
 
 .PHONY: all-hdd
 all-hdd: $(IMAGE_NAME).hdd
@@ -37,6 +64,15 @@ run-x86_64: $(OVMF_CODE) $(OVMF_VARS) $(IMAGE_NAME).iso
 		$(OVMF_QEMU_DRIVES) \
 		-cdrom $(IMAGE_NAME).iso \
 		$(QEMUFLAGS)
+
+.PHONY: run-serial-x86_64
+run-serial-x86_64: $(OVMF_CODE) $(OVMF_VARS) $(IMAGE_NAME).iso
+	qemu-system-$(ARCH) \
+		-M q35 \
+		$(OVMF_QEMU_DRIVES) \
+		-cdrom $(IMAGE_NAME).iso \
+		$(QEMUFLAGS) \
+		$(QEMU_SERIALFLAGS)
 
 .PHONY: run-hdd-x86_64
 run-hdd-x86_64: $(OVMF_CODE) $(OVMF_VARS) $(IMAGE_NAME).hdd
@@ -143,11 +179,11 @@ run-hdd-bios: $(IMAGE_NAME).hdd
 OVMF_TARBALL_URL := https://github.com/osdev0/edk2-ovmf-nightly/releases/latest/download/edk2-ovmf.tar.xz
 
 ovmf/edk2-ovmf.tar.xz:
-	mkdir -p ovmf
+	$(call MKDIR_P,ovmf)
 	curl -fL --retry 3 -o $@ $(OVMF_TARBALL_URL)
 
 $(OVMF_CODE) $(OVMF_VARS): ovmf/edk2-ovmf.tar.xz
-	mkdir -p ovmf
+	$(call MKDIR_P,ovmf)
 	tar -xJf ovmf/edk2-ovmf.tar.xz -C ovmf --strip-components=1 \
 		edk2-ovmf/ovmf-code-$(ARCH).fd \
 		edk2-ovmf/ovmf-vars-$(ARCH).fd
@@ -156,7 +192,7 @@ $(OVMF_CODE) $(OVMF_VARS): ovmf/edk2-ovmf.tar.xz
 
 .PHONY: fetch-ovmf
 fetch-ovmf:
-	rm -rf ovmf
+	$(call RM_RF,ovmf)
 	$(MAKE) $(OVMF_CODE) $(OVMF_VARS)
 
 limine/limine:
@@ -174,12 +210,12 @@ kernel:
 	$(MAKE) -C kernel
 
 $(IMAGE_NAME).iso: limine/limine kernel
-	rm -rf iso_root
-	mkdir -p iso_root/boot
+	$(call RM_RF,iso_root)
+	$(call MKDIR_P,iso_root/boot)
 	cp -v kernel/zig-out/bin-$(ARCH)/kernel iso_root/boot/
-	mkdir -p iso_root/boot/limine
+	$(call MKDIR_P,iso_root/boot/limine)
 	cp -v limine.conf iso_root/boot/limine/
-	mkdir -p iso_root/EFI/BOOT
+	$(call MKDIR_P,iso_root/EFI/BOOT)
 ifeq ($(ARCH),x86_64)
 	cp -v limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin iso_root/boot/limine/
 	cp -v limine/BOOTX64.EFI iso_root/EFI/BOOT/
@@ -218,7 +254,7 @@ ifeq ($(ARCH),loongarch64)
 		-efi-boot-part --efi-boot-image --protective-msdos-label \
 		iso_root -o $(IMAGE_NAME).iso
 endif
-	rm -rf iso_root
+	$(call RM_RF,iso_root)
 
 $(IMAGE_NAME).hdd: limine/limine kernel
 	rm -f $(IMAGE_NAME).hdd
@@ -251,9 +287,15 @@ endif
 .PHONY: clean
 clean:
 	$(MAKE) -C kernel clean
-	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
+	$(call RM_RF,iso_root)
+	$(call RM_RF,$(IMAGE_NAME).iso)
+	$(call RM_RF,$(IMAGE_NAME).hdd)
 
 .PHONY: distclean
 distclean:
 	$(MAKE) -C kernel distclean
-	rm -rf iso_root *.iso *.hdd limine ovmf
+	$(call RM_RF,iso_root)
+	$(call RM_RF,*.iso)
+	$(call RM_RF,*.hdd)
+	$(call RM_RF,limine)
+	$(call RM_RF,ovmf)

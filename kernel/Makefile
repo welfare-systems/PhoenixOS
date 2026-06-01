@@ -16,20 +16,42 @@ ZIG := zig
 
 ZIGFLAGS := -Doptimize=ReleaseSafe --cache-dir ~/.zig-cache
 
+ifeq ($(OS),Windows_NT)
+define RM_RF
+powershell -NoProfile -Command "if (Test-Path '$(1)') { Remove-Item -Recurse -Force '$(1)' }"
+endef
+define RM_F
+powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue '$(1)'"
+endef
+else
+define RM_RF
+rm -rf $(1)
+endef
+define RM_F
+rm -f $(1)
+endef
+endif
+
 # Default target.
 .PHONY: all
 all:
 	$(ZIG) build $(ZIGFLAGS) -Darch=$(ARCH) 
 
+.PHONY: test
+test:
+	$(ZIG) test src/arch/x86_64/trap_layout_test.zig --cache-dir ~/.zig-cache
+
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	rm -rf .zig-cache zig-out
+	$(call RM_RF,.zig-cache)
+	$(call RM_RF,zig-out)
 
 # Remove everything built and generated including downloaded dependencies.
 .PHONY: distclean
 distclean:
-	rm -rf .zig-cache zig-out
+	$(call RM_RF,.zig-cache)
+	$(call RM_RF,zig-out)
 
 # Install the final built executable to its final on-root location.
 .PHONY: install
@@ -40,5 +62,5 @@ install: all
 # Try to undo whatever the "install" target did.
 .PHONY: uninstall
 uninstall:
-	rm -f "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)"
+	$(call RM_F,"$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)")
 	-rmdir "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)"

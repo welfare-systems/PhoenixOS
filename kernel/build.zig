@@ -77,6 +77,11 @@ pub fn build(b: *std.Build) void {
         .root_module = kernel_module,
     });
 
+    switch (arch) {
+        .x86_64 => kernel.addAssemblyFile(b.path("src/arch/x86_64/entry/interrupts.S")),
+        .aarch64, .riscv64, .loongarch64 => {},
+    }
+
     kernel.setLinkerScript(b.path(b.fmt("linker-{s}.lds", .{@tagName(arch)})));
 
     b.resolveInstallPrefix(null, .{ .exe_dir = b.fmt("bin-{s}", .{@tagName(arch)}) });
